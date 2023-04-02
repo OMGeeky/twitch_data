@@ -13,8 +13,8 @@ use exponential_backoff::twitch::{
     check_backoff_twitch_with_client,
 };
 use futures::future::join_all;
+use log::{debug, error, info, trace, warn};
 use reqwest;
-// use reqwest::Response;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
@@ -124,7 +124,10 @@ pub struct TwitchClient<'a> {
 //region getting general infos
 impl<'a> TwitchClient<'a> {
     pub async fn new(client_id: ClientId, client_secret: ClientSecret) -> Result<TwitchClient<'a>> {
+        trace!("Creating new TwitchClient");
         let reqwest_client = reqwest::Client::new();
+        debug!("Created new reqwest client");
+        debug!("Creating new twitch_api::TwitchClient");
         let client: twitch_api::TwitchClient<reqwest::Client> = twitch_api::TwitchClient::default();
         let token = twitch_oauth2::AppAccessToken::get_app_access_token(
             &client,
@@ -133,11 +136,13 @@ impl<'a> TwitchClient<'a> {
             twitch_oauth2::Scope::all(),
         )
         .await?;
+        debug!("Created new twitch_oauth2::AppAccessToken: {:?}", token);
         let res = Self {
             client,
             token,
             reqwest_client,
         };
+        trace!("Created new TwitchClient");
         Ok(res)
     }
 
@@ -155,6 +160,7 @@ impl<'a> TwitchClient<'a> {
     }
 
     pub async fn get_channel_title_from_login(&self, channel_login: &str) -> Result<String> {
+        trace!("Getting channel title from login: {}", channel_login);
         let result = self.get_channel_info_from_login(channel_login).await?;
         if let Some(channel_info) = result {
             Ok(channel_info.title.clone())
@@ -167,6 +173,7 @@ impl<'a> TwitchClient<'a> {
         &self,
         channel_login: &str,
     ) -> Result<Option<ChannelInformation>> {
+        trace!("Getting channel info from login: {}", channel_login);
         let res = self
             .client
             .helix
@@ -186,7 +193,9 @@ impl<'a> TwitchClient<'a> {
         login: S,
         max_results: usize,
     ) -> Result<Vec<VideoId>> {
-        let id = self.get_channel_id_from_login(&login.into()).await?;
+        let login = login.into();
+        trace!("Getting video ids from login: {}", login);
+        let id = self.get_channel_id_from_login(&login).await?;
         self.get_video_ids_from_channel(&id, max_results).await
     }
 
@@ -195,6 +204,7 @@ impl<'a> TwitchClient<'a> {
         channel: &UserId,
         max_results: usize,
     ) -> Result<Vec<VideoId>> {
+        trace!("Getting video ids from channel");
         let res = self.get_videos_from_channel(channel, max_results).await?;
         Ok(res.into_iter().map(|v| v.id).collect())
     }
@@ -204,6 +214,7 @@ impl<'a> TwitchClient<'a> {
         channel: &UserId,
         max_results: usize,
     ) -> Result<Vec<TwitchVideo>> {
+        trace!("Getting videos from channel");
         let mut request = twitch_api::helix::videos::GetVideosRequest::user_id(channel);
         if max_results <= 100 {
             request.first = Some(max_results);
@@ -242,6 +253,7 @@ impl<'a> TwitchClient<'a> {
     }
 
     pub async fn get_video_info(&self, video_id: &VideoId) -> Result<TwitchVideo> {
+        trace!("Getting video info");
         let ids = vec![video_id.as_ref()];
         let request = twitch_api::helix::videos::GetVideosRequest::ids(ids);
         let res = self.client.helix.req_get(request, &self.token).await?;
@@ -758,10 +770,12 @@ fn convert_twitch_time_info(res: String, fmt: &str) -> DateTime<Utc> {
 
 //endregion
 pub async fn get_client<'a>() -> Result<TwitchClient<'a>> {
+    trace!("get_client");
     let config = load_config();
+    info!("get_client: config: {:?}", config);
     let client_id = ClientId::new(config.twitch_client_id);
     let client_secret = ClientSecret::new(config.twitch_client_secret);
-
+    info!("creating TwitchClient");
     let client = TwitchClient::new(client_id, client_secret).await?;
     Ok(client)
 }
