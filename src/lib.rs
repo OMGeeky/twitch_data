@@ -348,10 +348,11 @@ impl<'a> TwitchClient<'a> {
         );
 
         let (token, signature) = self.get_video_token_and_signature(&video_id).await?;
+        debug!("Got token and signature: {}, {}", token, signature);
         let playlist = self
             .get_video_playlist(&video_id, &token, &signature)
             .await?;
-
+        debug!("Got playlist: {}", playlist);
         let mut qualties = HashMap::new();
 
         let mut highest_quality = String::new();
