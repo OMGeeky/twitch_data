@@ -272,6 +272,10 @@ impl<'a> TwitchClient<'a> {
         video_id: S,
     ) -> Result<(String, String)> {
         let video_id = video_id.into();
+        trace!(
+            "Getting video token and signature for video id: {}",
+            video_id
+        );
         let json = r#"{
   "operationName": "PlaybackAccessToken_Template",
   "query": "query PlaybackAccessToken_Template($login: String!, $isLive: Boolean!, $vodID: ID!, $isVod: Boolean!, $playerType: String!) {  streamPlaybackAccessToken(channelName: $login, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isLive) {    value    signature    __typename  }  videoPlaybackAccessToken(id: $vodID, params: {platform: \"web\", playerBackend: \"mediaplayer\", playerType: $playerType}) @include(if: $isVod) {    value    signature    __typename  }}",
@@ -289,6 +293,9 @@ impl<'a> TwitchClient<'a> {
         let url = "https://gql.twitch.tv/gql";
         let config = load_config();
 
+        trace!("Sending request to: {}", url);
+        debug!("Request body: {}", json);
+        debug!("Client-ID: {}", config.twitch_downloader_id);
         let request = self
             .reqwest_client
             .post(url)
@@ -334,6 +341,11 @@ impl<'a> TwitchClient<'a> {
     ) -> Result<String> {
         let video_id = video_id.into();
         let quality = quality.into();
+        trace!(
+            "Getting video playlist with quality for video {} with quality {}",
+            video_id,
+            quality
+        );
 
         let (token, signature) = self.get_video_token_and_signature(&video_id).await?;
         let playlist = self
@@ -419,15 +431,18 @@ impl<'a> TwitchClient<'a> {
         output_folder_path: &Path,
     ) -> Result<PathBuf> {
         let video_id = video_id.into();
+        trace!("Downloading video: {}", video_id);
         let quality = quality.into();
         let folder_path = output_folder_path.join(&video_id);
 
         //get parts
+        trace!("Getting video playlist with quality: {}", quality);
         let url = self
             .get_video_playlist_with_quality(&video_id, &quality)
             .await?;
 
-        let mut files = self.download_all_parts(&url, &folder_path).await?;
+        info!("downloading all parts of video: {}", url);
+        let files = self.download_all_parts(&url, &folder_path).await?;
 
         //combine parts
 
@@ -463,7 +478,7 @@ impl<'a> TwitchClient<'a> {
                 Ok(n) => n,
                 Err(e) => {
                     println!(
-                        "potentionally catchable error while parsing the file number: {}",
+                        "potentially catchable error while parsing the file number: {}",
                         number
                     );
                     if !number.starts_with(&format!("{}v", video_id)) || !number.contains("-") {
@@ -476,6 +491,8 @@ impl<'a> TwitchClient<'a> {
                 }
             }
         });
+
+        debug!("combining all parts of video");
         let video_ts = output_folder_path.join(&video_id).join("video.ts");
         let mut video_ts_file = std::fs::File::create(&video_ts)?;
         for file_path in &files {
@@ -487,17 +504,20 @@ impl<'a> TwitchClient<'a> {
         }
 
         //convert to mp4
-        println!("converting to mp4");
+        info!("converting to mp4");
         let video_mp4 = output_folder_path.join(&video_id).join("video.mp4");
         if video_mp4.exists() {
             std::fs::remove_file(&video_mp4)?;
         }
+        trace!(
+            "running ffmpeg command: ffmpeg -i {} -c copy {}",
+            video_ts.display(),
+            video_mp4.display()
+        );
         let mut cmd = Command::new("ffmpeg");
         let convert_start_time = Instant::now();
         cmd.arg("-i")
             .arg(&video_ts)
-            // .arg("-map")
-            // .arg("0")
             .arg("-c")
             .arg("copy")
             .arg(&video_mp4);
@@ -505,13 +525,15 @@ impl<'a> TwitchClient<'a> {
         //stop the time how long it takes to convert
 
         let duration = Instant::now().duration_since(convert_start_time);
-        println!("duration: {:?}", duration);
-        // std::fs::remove_file(&video_ts)?;
-        println!("done converting to mp4");
+        trace!("ffmpeg command finished");
+        info!("duration: {:?}", duration);
+        info!("done converting to mp4");
 
+        trace!("removing temporary files");
         let final_path = output_folder_path.join(format!("{}.mp4", video_id));
         tokio::fs::rename(&video_mp4, &final_path).await?;
         tokio::fs::remove_dir_all(folder_path).await?;
+        trace!("done removing temporary files");
         Ok(final_path)
     }
 
