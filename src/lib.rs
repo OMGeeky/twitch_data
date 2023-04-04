@@ -304,11 +304,14 @@ impl<'a> TwitchClient<'a> {
             .build()?;
         let res = check_backoff_twitch_with_client(request, &self.reqwest_client).await?;
         // let res = self.reqwest_client.execute(request).await?;
-
+        trace!("get_video_token_and_signature: Got response: {:?}", res);
         let j = res.text().await?;
-
+        debug!("get_video_token_and_signature: Response body: {}", j);
         let json: TwitchVideoAccessTokenResponse = serde_json::from_str(&j)?;
-
+        trace!(
+            "get_video_token_and_signature: Got video token and signature: {:?}",
+            json
+        );
         Ok((
             json.data.videoPlaybackAccessToken.value,
             json.data.videoPlaybackAccessToken.signature,
