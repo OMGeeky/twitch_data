@@ -12,7 +12,7 @@ use exponential_backoff::twitch::{
     check_backoff_twitch_with_client,
 };
 use futures::future::join_all;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
@@ -441,7 +441,8 @@ impl<'a> TwitchClient<'a> {
             .await?;
 
         info!("downloading all parts of video: {}", url);
-        let files = self.download_all_parts(&url, &folder_path).await?;
+        let mut files = self.download_all_parts(&url, &folder_path).await?;
+        info!("downloaded all parts of video: {}", files.len());
 
         //combine parts
 
@@ -476,7 +477,7 @@ impl<'a> TwitchClient<'a> {
             match number.parse::<u32>() {
                 Ok(n) => n,
                 Err(e) => {
-                    println!(
+                    warn!(
                         "potentially catchable error while parsing the file number: {}\n{}",
                         number, e
                     );
