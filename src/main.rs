@@ -1,3 +1,4 @@
+use log::info;
 use std::error::Error;
 use std::path::Path;
 
@@ -7,6 +8,13 @@ use twitch_data::get_client;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    simplelog::TermLogger::init(
+        simplelog::LevelFilter::Info,
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
+    )
+    .expect("Failed to initialize logger");
     // async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting!");
     sample().await?;
@@ -20,7 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Done! 4");
     // get_video_playlist("1677206253").await?;
     println!("Done! 5");
-    download_video("1677206253").await?;
+    download_video("1768835851").await?;
     println!("Done! 6");
     println!("Done! 7");
     println!("\n\nDone!");
@@ -38,6 +46,6 @@ async fn download_video(video_id: &str) -> Result<(), Box<dyn Error>> {
 async fn sample() -> Result<(), Box<dyn Error>> {
     let client = get_client().await?;
     let title = client.get_channel_title_from_login("bananabrea").await?;
-    println!("Title: {}", title);
+    info!("Title: {}", title);
     Ok(())
 }
