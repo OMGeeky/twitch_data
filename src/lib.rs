@@ -537,7 +537,8 @@ impl<'a> TwitchClient<'a> {
         url: &String,
         folder_path: &PathBuf,
     ) -> Result<Vec<Option<PathBuf>>> {
-        let mut amount_of_threads = 100; //TODO: make this configurable (downloader_config)
+        let config = load_config();
+        let mut amount_of_threads: u64 = config.twitch_downloader_thread_count;
         trace!("downloading all parts of video: {}", url);
         let base_url = get_base_url(&url);
         info!("getting parts");
@@ -546,6 +547,7 @@ impl<'a> TwitchClient<'a> {
         info!("getting parts ...Done");
 
         let amount_of_parts = parts.len();
+        let amount_of_parts = amount_of_parts as u64;
         info!("part count: {}", amount_of_parts);
         if amount_of_parts < 1 {
             return Err(DownloadError::new("No parts found").into());
