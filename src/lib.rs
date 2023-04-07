@@ -732,6 +732,21 @@ async fn try_download(main_path: &PathBuf, part: &String, part_url: &String) -> 
     Some(path)
 }
 
+//endregion
+
+pub async fn get_client<'a>() -> Result<TwitchClient<'a>> {
+    trace!("get_client");
+    let config = load_config();
+    info!("get_client: config: {:?}", config);
+    let client_id = ClientId::new(config.twitch_client_id);
+    let client_secret = ClientSecret::new(config.twitch_client_secret);
+    info!("creating TwitchClient");
+    let client = TwitchClient::new(client_id, client_secret).await?;
+    Ok(client)
+}
+
+//region static functions
+
 fn get_base_url(url: &str) -> String {
     let mut base_url = url.to_string();
     let mut i = base_url.len() - 1;
@@ -746,63 +761,51 @@ fn get_base_url(url: &str) -> String {
 }
 
 fn convert_twitch_timestamp(time: Timestamp) -> DateTime<Utc> {
-    let time1: String = time.take();
+    let time1: String = time.take() as String;
     trace!("convert_twitch_timestamp: {}", time1);
     convert_twitch_time(&time1)
 }
 
+/// parse a duration from a string like '2h49m47s'
 fn convert_twitch_duration(duration: &str) -> chrono::Duration {
     trace!("convert_twitch_duration: {}", duration);
 
-    // todo!("Parse duration that comes in like '2h49m47s'");
     let duration = duration
         .replace("h", ":")
         .replace("m", ":")
         .replace("s", "");
 
-    //
     let mut t = duration.split(":").collect::<Vec<&str>>();
-    t.reverse();
-    //
-    //
-    // let milis = t.pop();
-    // let milis: i64 = milis.expect("at least the milis must be there").parse().expect(format!("Failed to parse milis: {:?}", milis).as_str());
-    let secs = t.pop();
-    let secs: i64 = match secs {
+
+    let secs_str = t.pop();
+    let secs: i64 = match secs_str {
         Some(secs) => secs
             .parse()
             .expect(format!("Failed to parse secs: {:?}", secs).as_str()),
         None => 0,
     };
-    let mins = t.pop();
-    let mins: i64 = match mins {
+
+    let mins_str = t.pop();
+    let mins: i64 = match mins_str {
         Some(mins) => mins
             .parse()
             .expect(format!("Failed to parse mins: {:?}", mins).as_str()),
         None => 0,
     };
-    let hours = t.pop();
-    let hours: i64 = match hours {
+
+    let hours_str = t.pop();
+    let hours: i64 = match hours_str {
         Some(hours) => hours
             .parse()
             .expect(format!("Failed to parse hours: {:?}", hours).as_str()),
         None => 0,
     };
 
-    let milis =/* milis +*/ secs*1000 + mins*60*1000 + hours*60*60*1000;
+    println!("hours: {}, mins: {}, secs: {}", hours, mins, secs);
+    let millis =/* millis +*/ secs*1000 + mins*60*1000 + hours*60*60*1000;
 
-    let res = chrono::Duration::milliseconds(milis);
+    let res = chrono::Duration::milliseconds(millis);
     res
-    //
-    // let res = chrono::Duration::from_std(
-    //     std::time::Duration::(duration.parse::<f32>().unwrap()),
-    // )
-    // let end_time = convert_twitch_time_info(duration.to_string(), "%H:%M:%S%z");
-    // let start_time = chrono::DateTime::from_utc(
-    //     chrono::NaiveDateTime::from_timestamp_opt(0, 0).unwrap(),
-    //     chrono::Utc,
-    // );
-    // end_time - start_time
 }
 
 fn convert_twitch_time(time: &str) -> DateTime<Utc> {
@@ -829,16 +832,6 @@ fn convert_twitch_time_info(res: String, fmt: &str) -> DateTime<Utc> {
 }
 
 //endregion
-pub async fn get_client<'a>() -> Result<TwitchClient<'a>> {
-    trace!("get_client");
-    let config = load_config();
-    info!("get_client: config: {:?}", config);
-    let client_id = ClientId::new(config.twitch_client_id);
-    let client_secret = ClientSecret::new(config.twitch_client_secret);
-    info!("creating TwitchClient");
-    let client = TwitchClient::new(client_id, client_secret).await?;
-    Ok(client)
-}
 
 //region Twitch access token structs (maybe find out how to extract those values directly without these structs)
 #[derive(Debug, Deserialize, Serialize)]
@@ -855,4 +848,46 @@ pub struct VideoAccessTokenResponseDataAccessToken {
     pub value: String,
     pub signature: String,
 }
+//endregion
+
+//region tests
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_convert_twitch_time() {
+        let time = "2021-01-01T00:00:00Z";
+        let time = convert_twitch_time(time);
+        assert_eq!(time.to_string(), "2021-01-01 00:00:00 UTC");
+    }
+
+    #[test]
+    fn test_convert_twitch_time_info() {
+        let time = "2021-01-01T00:00:00+00:00";
+        let time = convert_twitch_time_info(time.to_string(), "%Y-%m-%dT%H:%M:%S%z");
+        assert_eq!(time.to_string(), "2021-01-01 00:00:00 UTC");
+        let time = "2021-01-01T00:00:00Z";
+        let time = convert_twitch_time_info(time.to_string(), "%Y-%m-%dT%H:%M:%S%z");
+        assert_eq!(time.to_string(), "2021-01-01 00:00:00 UTC");
+    }
+
+    #[test]
+    fn test_convert_twitch_duration() {
+        let duration = "2h49m47s";
+        println!("duration: {:?}", duration);
+        let duration = convert_twitch_duration(duration);
+        println!("duration: {:?}", duration);
+        assert_eq!(duration.num_seconds(), 10187);
+    }
+
+    #[test]
+    fn test_get_base_url() {
+        let url = "https://dqrpb9wgowsf5.cloudfront.net/5f3ee3729979d8e1eab3_halfwayhardcore_42051664507_1680818535/chunked/index-dvr.m3u8";
+        let base_url = get_base_url(url);
+        assert_eq!(base_url, "https://dqrpb9wgowsf5.cloudfront.net/5f3ee3729979d8e1eab3_halfwayhardcore_42051664507_1680818535/chunked/");
+    }
+}
+
 //endregion
