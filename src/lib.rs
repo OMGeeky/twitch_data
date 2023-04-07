@@ -537,7 +537,7 @@ impl<'a> TwitchClient<'a> {
         url: &String,
         folder_path: &PathBuf,
     ) -> Result<Vec<Option<PathBuf>>> {
-        let mut amount_of_threads = 10;
+        let mut amount_of_threads = 100; //TODO: make this configurable (downloader_config)
         trace!("downloading all parts of video: {}", url);
         let base_url = get_base_url(&url);
         info!("getting parts");
@@ -591,7 +591,7 @@ impl<'a> TwitchClient<'a> {
         //
         //
         // for part in parts {
-        //     // info!("downloading part: {} : {}", part.0, part.1);
+        //     trace!("downloading part: {} : {}", part.0, part.1);
         //     let downloader =
         //         download_part(part, base_url.clone(), folder_path.clone(), try_unmute).await;
         //     files.push(downloader);
@@ -599,7 +599,7 @@ impl<'a> TwitchClient<'a> {
         // TODO: make this work in multiple threads (maybe about 10?)
         // let mut downloaders = vec![];
         // for part in parts {
-        //     // info!("downloading part: {} : {}", part.0, part.1);
+        //     trace!("downloading part: {} : {}", part.0, part.1);
         //     // let downloader = Self::download_part(part, &base_url, &folder_path, try_unmute);
         //     // TODO: make this not take up all the resources of the server/have a specific amount of threads
         //     let downloader = tokio::spawn!(download_part(
@@ -629,7 +629,7 @@ impl<'a> TwitchClient<'a> {
         let response = check_backoff_twitch_get_with_client(url, &self.reqwest_client).await?;
         let video_chunks = response.text().await?;
         trace!("got parts: {}", video_chunks.len());
-        // info!("video_chunks: \n\n{}\n", video_chunks);
+        trace!("video_chunks: \n\n{}\n", video_chunks);
         let lines = video_chunks.lines().collect::<Vec<&str>>();
 
         let mut age = 25;
@@ -648,7 +648,7 @@ impl<'a> TwitchClient<'a> {
         let mut parts = HashMap::new();
 
         for i in 0..lines.len() {
-            // info!("line: {}", i);
+            trace!("line: {}", i);
             let l0 = lines[i];
             if !l0.contains("#EXTINF") {
                 continue;
@@ -658,7 +658,7 @@ impl<'a> TwitchClient<'a> {
             if !l1.contains("#EXT-X-BYTERANGE") {
                 let v = l0[8..].strip_suffix(",").unwrap().parse::<f32>().unwrap();
                 parts.insert(l1.to_string(), v);
-                // info!("no byterange found: {i}");
+                trace!("no byterange found: {i}");
                 continue;
             }
 
@@ -705,7 +705,6 @@ async fn download_part(
 
 async fn try_download(main_path: &PathBuf, part: &String, part_url: &String) -> Option<PathBuf> {
     trace!("trying to download part: {}", part_url);
-    // info!("Downloading part: {}", part_url);
     let path = Path::join(main_path, part);
 
     let mut res = check_backoff_twitch_get(part_url).await.ok()?;
