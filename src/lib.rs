@@ -12,7 +12,7 @@ use exponential_backoff::twitch::{
     check_backoff_twitch_with_client,
 };
 use futures::future::join_all;
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use reqwest;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
@@ -435,7 +435,6 @@ impl<'a> TwitchClient<'a> {
         let folder_path = output_folder_path.join(&video_id);
 
         //get parts
-        trace!("Getting video playlist with quality: {}", quality);
         let url = self
             .get_video_playlist_with_quality(&video_id, &quality)
             .await?;
@@ -489,13 +488,13 @@ impl<'a> TwitchClient<'a> {
 
         debug!("combining all parts of video");
         let video_ts = output_folder_path.join(&video_id).join("video.ts");
-        let mut video_ts_file = std::fs::File::create(&video_ts)?;
+        let mut video_ts_file = tokio::fs::File::create(&video_ts).await?;
         for file_path in &files {
-            // println!("{:?}", file_path);
-            let file = std::fs::read(&file_path)?;
-            // println!("size of file: {}", file.len());
-            video_ts_file.write(&file)?;
-            std::fs::remove_file(&file_path)?;
+            // trace!("{:?}", file_path);
+            let file = tokio::fs::read(&file_path).await?;
+            // trace!("size of file: {}", file.len());
+            video_ts_file.write(&file).await?;
+            tokio::fs::remove_file(&file_path).await?;
         }
 
         //convert to mp4
@@ -504,7 +503,7 @@ impl<'a> TwitchClient<'a> {
         if video_mp4.exists() {
             std::fs::remove_file(&video_mp4)?;
         }
-        trace!(
+        debug!(
             "running ffmpeg command: ffmpeg -i {} -c copy {}",
             video_ts.display(),
             video_mp4.display()
@@ -516,19 +515,26 @@ impl<'a> TwitchClient<'a> {
             .arg("-c")
             .arg("copy")
             .arg(&video_mp4);
-        cmd.output().await?;
+        let result = cmd.output().await;
         //stop the time how long it takes to convert
-
         let duration = Instant::now().duration_since(convert_start_time);
-        trace!("ffmpeg command finished");
+        if let Err(e) = result {
+            error!(
+                "Error while running ffmpeg command after {:?}: {}",
+                duration, e
+            );
+            return Err(e.into());
+        }
+        debug!("ffmpeg command finished");
         info!("duration: {:?}", duration);
+
         info!("done converting to mp4");
 
-        trace!("removing temporary files");
+        debug!("removing temporary files");
         let final_path = output_folder_path.join(format!("{}.mp4", video_id));
         tokio::fs::rename(&video_mp4, &final_path).await?;
         tokio::fs::remove_dir_all(folder_path).await?;
-        trace!("done removing temporary files");
+        debug!("done removing temporary files");
         Ok(final_path)
     }
 
@@ -537,9 +543,9 @@ impl<'a> TwitchClient<'a> {
         url: &String,
         folder_path: &PathBuf,
     ) -> Result<Vec<Option<PathBuf>>> {
+        trace!("downloading all parts of video: {}", url);
         let config = load_config();
         let mut amount_of_threads: u64 = config.twitch_downloader_thread_count;
-        trace!("downloading all parts of video: {}", url);
         let base_url = get_base_url(&url);
         info!("getting parts");
         let (age, parts) = self.get_parts(&url).await?;
@@ -585,43 +591,14 @@ impl<'a> TwitchClient<'a> {
             // let mut result: Vec<Option<PathBuf>> = tokio::join!(downloader_futures);
             let result: Vec<std::result::Result<Option<PathBuf>, tokio::task::JoinError>> =
                 join_all(downloader_futures).await;
+
             for downloader in result.into_iter() {
                 let downloader = downloader?;
                 files.push(downloader);
             }
         }
-        //
-        //
-        // for part in parts {
-        //     trace!("downloading part: {} : {}", part.0, part.1);
-        //     let downloader =
-        //         download_part(part, base_url.clone(), folder_path.clone(), try_unmute).await;
-        //     files.push(downloader);
-        // }
-        // TODO: make this work in multiple threads (maybe about 10?)
-        // let mut downloaders = vec![];
-        // for part in parts {
-        //     trace!("downloading part: {} : {}", part.0, part.1);
-        //     // let downloader = Self::download_part(part, &base_url, &folder_path, try_unmute);
-        //     // TODO: make this not take up all the resources of the server/have a specific amount of threads
-        //     let downloader = tokio::spawn!(download_part(
-        //         part,
-        //         base_url.clone(),
-        //         folder_path.clone(),
-        //         try_unmute,
-        //     ));
-        //     downloaders.push(downloader);
-        // }
-        //
-        // let mut files = join_all(downloaders).await;
-        // // runtime.shutdown_timeout(Duration::from_secs(10));
-        // let mut files1 = vec![];
-        // for file in files {
-        //     let v = file?;
-        //     files1.push(v);
-        // }
-        // let files = files1;
-        info!("downloaded all parts of video: ");
+
+        info!("downloaded all parts of the video");
         Ok(files)
     }
 
@@ -802,7 +779,7 @@ fn convert_twitch_duration(duration: &str) -> chrono::Duration {
         None => 0,
     };
 
-    println!("hours: {}, mins: {}, secs: {}", hours, mins, secs);
+    debug!("hours: {}, mins: {}, secs: {}", hours, mins, secs);
     let millis =/* millis +*/ secs*1000 + mins*60*1000 + hours*60*60*1000;
 
     let res = chrono::Duration::milliseconds(millis);
