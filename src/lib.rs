@@ -12,7 +12,7 @@ use exponential_backoff::twitch::{
     check_backoff_twitch_with_client,
 };
 use futures::future::join_all;
-use log::{debug, error, info, trace, warn};
+use crate::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
@@ -25,7 +25,7 @@ use twitch_api::helix::videos::Video as TwitchVideo;
 use twitch_api::types::{Timestamp, VideoPrivacy};
 use twitch_oauth2::{ClientId, ClientSecret};
 pub use twitch_types::{UserId, VideoId};
-
+pub mod prelude;
 //region DownloadError
 #[derive(Debug, Clone)]
 pub struct DownloadError {

@@ -1,4 +1,4 @@
-use log::info;
+use twitch_data::prelude::info;
 use std::error::Error;
 use std::path::Path;
 
