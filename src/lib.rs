@@ -324,7 +324,7 @@ impl<'a> TwitchClient<'a> {
         let signature = signature.into();
 
         let playlist_url = format!(
-            "http://usher.twitch.tv/vod/{}?nauth={}&nauthsig={}&allow_source=true&player=twitchweb",
+            "http://usher.ttvnw.net/vod/{}?nauth={}&nauthsig={}&allow_source=true&player=twitchweb",
             video_id, token, signature
         );
         let playlist = check_backoff_twitch_get(playlist_url).await?.text().await?;
