@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -11,7 +10,7 @@ use exponential_backoff::twitch::{
     check_backoff_twitch_get, check_backoff_twitch_get_with_client,
     check_backoff_twitch_with_client,
 };
-use futures::future::join_all;
+
 use futures::StreamExt;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -29,6 +28,7 @@ pub use twitch_types::{UserId, VideoId};
 use crate::prelude::*;
 
 pub mod prelude;
+
 //region DownloadError
 #[derive(Debug, Clone)]
 pub struct DownloadError {
@@ -42,6 +42,7 @@ impl Display for DownloadError {
 }
 
 impl Error for DownloadError {}
+
 impl DownloadError {
     pub fn new<S: Into<String>>(message: S) -> DownloadError {
         let message = message.into();
@@ -90,6 +91,7 @@ pub fn convert_twitch_video_to_twitch_data_video(twitch_video: TwitchVideo) -> V
         thumbnail_url: twitch_video.thumbnail_url,
     }
 }
+
 impl<'a> TwitchClient<'a> {
     pub async fn get_videos_from_login(
         &self,
@@ -106,6 +108,7 @@ impl<'a> TwitchClient<'a> {
         Ok(v)
     }
 }
+
 //endregion Proxies
 pub enum VideoQuality {
     Source,
@@ -116,6 +119,7 @@ pub enum VideoQuality {
     AudioOnly,
     Other(String),
 }
+
 pub struct TwitchClient<'a> {
     reqwest_client: reqwest::Client,
     client: twitch_api::TwitchClient<'a, reqwest::Client>,
@@ -461,76 +465,12 @@ impl<'a> TwitchClient<'a> {
 
         let mut files: Vec<PathBuf> = files.into_iter().map(|f| f.unwrap()).collect();
 
-        files.sort_by_key(|f| {
-            let number = f
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .replace("-muted", "") //remove the muted for the sort if its there
-                .replace(".ts", "") //remove the file ending for the sort
-                ;
+        sort_video_part_filenames(&video_id, &mut files);
 
-            match number.parse::<u32>() {
-                Ok(n) => n,
-                Err(e) => {
-                    warn!(
-                        "potentially catchable error while parsing the file number: {}\n{}",
-                        number, e
-                    );
-                    if !number.starts_with(&format!("{}v", video_id)) || !number.contains("-") {
-                        panic!("Error while parsing the file number: {}", number)
-                    }
-                    let number = number.split("-").collect::<Vec<&str>>()[1];
-                    number
-                        .parse()
-                        .expect(format!("Error while parsing the file number: {}", number).as_str())
-                }
-            }
-        });
-
-        debug!("combining all parts of video");
         let video_ts = output_folder_path.join(&video_id).join("video.ts");
-        let mut video_ts_file = tokio::fs::File::create(&video_ts).await?;
-        for file_path in &files {
-            // trace!("{:?}", file_path);
-            let file = tokio::fs::read(&file_path).await?;
-            // trace!("size of file: {}", file.len());
-            video_ts_file.write(&file).await?;
-            tokio::fs::remove_file(&file_path).await?;
-        }
-
-        //convert to mp4
-        info!("converting to mp4");
         let video_mp4 = output_folder_path.join(&video_id).join("video.mp4");
-        if video_mp4.exists() {
-            std::fs::remove_file(&video_mp4)?;
-        }
-        debug!(
-            "running ffmpeg command: ffmpeg -i {} -c copy {}",
-            video_ts.display(),
-            video_mp4.display()
-        );
-        let mut cmd = Command::new("ffmpeg");
-        let convert_start_time = Instant::now();
-        cmd.arg("-i")
-            .arg(&video_ts)
-            .arg("-c")
-            .arg("copy")
-            .arg(&video_mp4);
-        let result = cmd.output().await;
-        //stop the time how long it takes to convert
-        let duration = Instant::now().duration_since(convert_start_time);
-        if let Err(e) = result {
-            error!(
-                "Error while running ffmpeg command after {:?}: {}",
-                duration, e
-            );
-            return Err(e.into());
-        }
-        debug!("ffmpeg command finished");
-        info!("duration: {:?}", duration);
-
+        combine_parts_into_single_ts(files, &video_ts).await?;
+        convert_ts_to_mp4(&video_mp4, &video_ts).await?;
         info!("done converting to mp4");
 
         debug!("removing temporary files");
@@ -708,6 +648,82 @@ pub async fn get_client<'a>() -> Result<TwitchClient<'a>> {
 
 //region static functions
 
+pub fn sort_video_part_filenames(video_id: &str, files: &mut Vec<PathBuf>) {
+    files.sort_by_key(|f| {
+        let number = f
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .replace("-muted", "") //remove the muted for the sort if its there
+            .replace(".ts", "") //remove the file ending for the sort
+            ;
+
+        match number.parse::<u32>() {
+            Ok(n) => n,
+            Err(e) => {
+                warn!(
+                    "potentially catchable error while parsing the file number: {}\n{}",
+                    number, e
+                );
+                if !number.starts_with(&format!("{}v", video_id)) || !number.contains("-") {
+                    panic!("Error while parsing the file number: {}", number)
+                }
+                let number = number.split("-").collect::<Vec<&str>>()[1];
+                number
+                    .parse()
+                    .expect(format!("Error while parsing the file number: {}", number).as_str())
+            }
+        }
+    });
+}
+pub async fn convert_ts_to_mp4(video_mp4: &PathBuf, video_ts: &PathBuf) -> Result<()> {
+    //convert to mp4
+    info!("converting to mp4");
+    if video_mp4.exists() {
+        std::fs::remove_file(&video_mp4)?;
+    }
+    debug!(
+        "running ffmpeg command: ffmpeg -i {} -c copy {}",
+        video_ts.display(),
+        video_mp4.display()
+    );
+    let mut cmd = Command::new("ffmpeg");
+    let convert_start_time = Instant::now();
+    cmd.arg("-i")
+        .arg(&video_ts)
+        .arg("-c")
+        .arg("copy")
+        .arg(&video_mp4);
+    let result = cmd.output().await;
+    //stop the time how long it takes to convert
+    let duration = Instant::now().duration_since(convert_start_time);
+    if let Err(e) = result {
+        error!(
+            "Error while running ffmpeg command after {:?}: {}",
+            duration, e
+        );
+        return Err(e.into());
+    }
+    debug!("ffmpeg command finished");
+    info!("duration: {:?}", duration);
+    Ok(())
+}
+
+pub async fn combine_parts_into_single_ts(files: Vec<PathBuf>, video_ts: &PathBuf) -> Result<()> {
+    debug!("combining all parts of video");
+    debug!("part amount: {}", files.len());
+    let mut video_ts_file = tokio::fs::File::create(&video_ts).await?;
+    for file_path in &files {
+        debug!("{:?}", file_path.file_name());
+        let file = tokio::fs::read(&file_path).await?;
+        trace!("size of file: {}", file.len());
+        video_ts_file.write_all(&file).await?;
+        tokio::fs::remove_file(&file_path).await?;
+    }
+    Ok(())
+}
+
 fn get_base_url(url: &str) -> String {
     let mut base_url = url.to_string();
     let mut i = base_url.len() - 1;
@@ -763,7 +779,7 @@ fn convert_twitch_duration(duration: &str) -> chrono::Duration {
     };
 
     debug!("hours: {}, mins: {}, secs: {}", hours, mins, secs);
-    let millis =/* millis +*/ secs*1000 + mins*60*1000 + hours*60*60*1000;
+    let millis = /* millis +*/ secs * 1000 + mins * 60 * 1000 + hours * 60 * 60 * 1000;
 
     let res = chrono::Duration::milliseconds(millis);
     res
@@ -799,11 +815,13 @@ fn convert_twitch_time_info(res: String, fmt: &str) -> DateTime<Utc> {
 pub struct TwitchVideoAccessTokenResponse {
     pub data: VideoAccessTokenResponseData,
 }
+
 //noinspection ALL
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VideoAccessTokenResponseData {
     pub videoPlaybackAccessToken: VideoAccessTokenResponseDataAccessToken,
 }
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VideoAccessTokenResponseDataAccessToken {
     pub value: String,
