@@ -1,57 +1,54 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
-use std::fmt::{Debug, Display, Formatter};
-use std::path::{Path, PathBuf};
-
+#[allow(unused, dead_code)]
+//^^ hides some warnings while developing TODO: remove at release
+use crate::prelude::*;
 use chrono::{DateTime, Utc};
 use downloader_config::load_config;
 use exponential_backoff::twitch::{
     check_backoff_twitch_get, check_backoff_twitch_get_with_client,
     check_backoff_twitch_with_client,
 };
-
 use futures::StreamExt;
-use reqwest;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::error::Error as StdError;
+use std::fmt::Debug;
+use std::path::{Path, PathBuf};
+use std::result::Result as StdResult;
+use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::time::Duration;
 use tokio::time::Instant;
-use twitch_api;
 use twitch_api::helix::channels::ChannelInformation;
 use twitch_api::helix::videos::Video as TwitchVideo;
 use twitch_api::types::{Timestamp, VideoPrivacy};
 use twitch_oauth2::{ClientId, ClientSecret};
-pub use twitch_types::{UserId, VideoId};
 
-use crate::prelude::*;
+pub use twitch_types::{UserId, VideoId};
 
 pub mod prelude;
 
 //region DownloadError
-#[derive(Debug, Clone)]
-pub struct DownloadError {
-    message: String,
+#[derive(Debug, Error)]
+pub enum DownloadError {
+    #[error("Error while downloading all parts")]
+    DownloadAllParts,
+    #[error("Error with the canonicalization of the path")]
+    Canonicalization,
+    #[error("No parts found")]
+    NoParts,
+    #[error("No channel info found")]
+    NoChannelFound,
+    #[error("Error while running ffmpeg command after {0:?}: {1}")]
+    Ffmpeg(Duration, anyhow::Error),
+    #[error(transparent)]
+    Other(#[from] Box<dyn StdError>),
 }
 
-impl Display for DownloadError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", stringify!(DownloadError), self.message)
-    }
-}
-
-impl Error for DownloadError {}
-
-impl DownloadError {
-    pub fn new<S: Into<String>>(message: S) -> DownloadError {
-        let message = message.into();
-        DownloadError { message }
-    }
-}
 //endregion
 
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+type Result<T> = std::result::Result<T, Box<dyn StdError>>;
 
 //region Proxies
 #[derive(Debug)]
@@ -167,7 +164,7 @@ impl<'a> TwitchClient<'a> {
         if let Some(channel_info) = result {
             Ok(channel_info.title.clone())
         } else {
-            Err("No channel info found".into())
+            Err(Box::new(DownloadError::NoChannelFound))
         }
     }
 
@@ -447,23 +444,28 @@ impl<'a> TwitchClient<'a> {
             .await?;
 
         info!("downloading all parts of video: {}", url);
-        let mut files = self.download_all_parts(&url, &folder_path).await?;
+        let files = self.download_all_parts(&url, &folder_path).await?;
         info!("downloaded all parts of video: {}", files.len());
 
         //combine parts
 
-        for file in files.iter_mut() {
-            let file = file;
-            if file.is_some() {
-                let x = file.as_mut().unwrap();
-                let y = x.canonicalize()?;
-                *x = y;
-            } else {
-                return Err(DownloadError::new("Error while downloading all parts").into());
-            }
-        }
-
-        let mut files: Vec<PathBuf> = files.into_iter().map(|f| f.unwrap()).collect();
+        let mut files = files
+            .into_iter()
+            .enumerate()
+            .map(|(i, file)| {
+                trace!("file: {} {:?}", i, file.as_ref().map(|x| x.display()));
+                if let Some(file) = file {
+                    let file = file.canonicalize();
+                    if let Ok(file) = file {
+                        Ok(file)
+                    } else {
+                        Err(DownloadError::Canonicalization)
+                    }
+                } else {
+                    Err(DownloadError::DownloadAllParts)
+                }
+            })
+            .collect::<StdResult<Vec<_>, DownloadError>>()?;
 
         sort_video_part_filenames(&video_id, &mut files);
 
@@ -499,7 +501,7 @@ impl<'a> TwitchClient<'a> {
         let amount_of_parts = amount_of_parts as u64;
         info!("part count: {}", amount_of_parts);
         if amount_of_parts < 1 {
-            return Err(DownloadError::new("No parts found").into());
+            return Err(Box::new(DownloadError::NoParts));
         }
 
         //download parts
@@ -699,11 +701,7 @@ pub async fn convert_ts_to_mp4(video_mp4: &PathBuf, video_ts: &PathBuf) -> Resul
     //stop the time how long it takes to convert
     let duration = Instant::now().duration_since(convert_start_time);
     if let Err(e) = result {
-        error!(
-            "Error while running ffmpeg command after {:?}: {}",
-            duration, e
-        );
-        return Err(e.into());
+        return Err(Box::new(DownloadError::Ffmpeg(duration, e.into())));
     }
     debug!("ffmpeg command finished");
     info!("duration: {:?}", duration);
