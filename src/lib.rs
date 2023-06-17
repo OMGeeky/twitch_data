@@ -313,8 +313,8 @@ impl<'a> TwitchClient<'a> {
             json
         );
         Ok((
-            json.data.videoPlaybackAccessToken.value,
-            json.data.videoPlaybackAccessToken.signature,
+            json.data.video_playback_access_token.value,
+            json.data.video_playback_access_token.signature,
         ))
     }
     //noinspection HttpUrlsUsage
@@ -818,7 +818,8 @@ pub struct TwitchVideoAccessTokenResponse {
 //noinspection ALL
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VideoAccessTokenResponseData {
-    pub videoPlaybackAccessToken: VideoAccessTokenResponseDataAccessToken,
+    #[serde(rename = "videoPlaybackAccessToken")]
+    pub video_playback_access_token: VideoAccessTokenResponseDataAccessToken,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
