@@ -225,16 +225,17 @@ impl<'a> TwitchClient<'a> {
             .await?;
         let mut data: Vec<twitch_api::helix::videos::Video> = res.data.clone();
 
-        let count = &data.len();
-        if count < &max_results {
+        let mut count = data.len();
+        if count < max_results {
             let mut next = res.get_next(&self.client.helix, &self.token).await?;
-            'loop_pages: while count < &max_results {
+            'loop_pages: while count < max_results {
                 if let Some(n) = next {
                     for element in &n.data {
-                        if count + 1 > max_results {
+                        if count >= max_results {
                             break 'loop_pages;
                         }
-                        data.push(element.clone())
+                        data.push(element.clone());
+                        count += 1;
                     }
 
                     next = n.get_next(&self.client.helix, &self.token).await?;
