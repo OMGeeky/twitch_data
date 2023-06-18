@@ -712,12 +712,11 @@ pub async fn convert_ts_to_mp4(video_mp4: &PathBuf, video_ts: &PathBuf) -> Resul
 pub async fn combine_parts_into_single_ts(files: Vec<PathBuf>, video_ts: &PathBuf) -> Result<()> {
     debug!("combining all parts of video");
     debug!("part amount: {}", files.len());
-    let mut video_ts_file = tokio::fs::File::create(&video_ts).await?;
+    let mut video_ts_file = File::create(&video_ts).await?;
     for file_path in &files {
         debug!("{:?}", file_path.file_name());
-        let file = tokio::fs::read(&file_path).await?;
-        trace!("size of file: {}", file.len());
-        video_ts_file.write_all(&file).await?;
+        let mut file = File::open(&file_path).await?;
+        tokio::io::copy(&mut file, &mut video_ts_file).await?;
         tokio::fs::remove_file(&file_path).await?;
     }
     Ok(())
