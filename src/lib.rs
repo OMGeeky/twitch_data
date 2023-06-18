@@ -745,12 +745,13 @@ fn convert_twitch_timestamp(time: Timestamp) -> DateTime<Utc> {
 fn convert_twitch_duration(duration: &str) -> chrono::Duration {
     trace!("convert_twitch_duration: {}", duration);
 
+    #[allow(clippy::collapsible_str_replace)]
     let duration = duration
-        .replace("h", ":")
-        .replace("m", ":")
-        .replace("s", "");
+        .replace('h', ":")
+        .replace('m', ":")
+        .replace('s', "");
 
-    let mut t = duration.split(":").collect::<Vec<&str>>();
+    let mut t = duration.split(':').collect::<Vec<&str>>();
 
     let secs_str = t.pop();
     let secs: i64 = match secs_str {
