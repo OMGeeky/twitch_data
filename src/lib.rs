@@ -713,6 +713,7 @@ pub fn sort_video_part_filenames(video_id: &str, files: &mut Vec<PathBuf>) {
             .to_str()
             .unwrap()
             .replace("-muted", "") //remove the muted for the sort if its there
+            .replace("-unmuted", "") //remove the muted for the sort if its there
             .replace(".ts", "") //remove the file ending for the sort
             ;
 
