@@ -29,10 +29,4 @@ futures = "0.3"
 async-recursion = "1.0.0"
 log = "0.4"
 simplelog = "0.12.1"
-
-
-
-tracing = { version = "0.1", optional = true }
-
-[features]
-tracing = ["dep:tracing","downloader_config/tracing", "exponential_backoff/tracing"]
+tracing = "0.1"
