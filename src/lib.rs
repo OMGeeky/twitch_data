@@ -559,7 +559,7 @@ impl<'a> TwitchClient<'a> {
             let completed = Arc::clone(&completed);
             let canceled = Arc::clone(&canceled);
             tokio::spawn(async move {
-                while canceled.load(Ordering::Relaxed) {
+                while !canceled.load(Ordering::Relaxed) {
                     let current_progress = completed.load(Ordering::Relaxed);
                     info!(
                         "{}: {:>6.2}% ({}/{}) [{}]",
