@@ -549,9 +549,10 @@ impl<'a> TwitchClient<'a> {
     fn create_progress_indicator(
         amount_of_parts: usize,
         report_frequency: Duration,
-        title: impl Into<&str>,
+        title: impl Into<String>,
     ) -> (Arc<AtomicUsize>, JoinHandle<()>) {
         let completed = Arc::new(AtomicUsize::new(0));
+        let title = title.into();
         let progress_handle = {
             let completed = Arc::clone(&completed);
             tokio::spawn(async move {
@@ -560,7 +561,7 @@ impl<'a> TwitchClient<'a> {
                     let current_progress = completed.load(Ordering::Relaxed);
                     info!(
                         "{}: {:>6.2}% ({}/{})",
-                        title.into(),
+                        title,
                         (current_progress as f64 / amount_of_parts as f64) * 100.0,
                         current_progress,
                         amount_of_parts
