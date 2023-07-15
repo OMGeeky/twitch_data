@@ -521,7 +521,7 @@ impl<'a> TwitchClient<'a> {
         } else if amount_of_threads > amount_of_parts {
             amount_of_threads = amount_of_parts;
         }
-        let (completed, progress_handle) = Self::create_progress_indicator(
+        let (completed, _) = Self::create_progress_indicator(
             amount_of_parts,
             Duration::from_secs(5),
             "Downloading Parts",
@@ -539,9 +539,6 @@ impl<'a> TwitchClient<'a> {
         .collect::<Vec<Option<PathBuf>>>();
         let files = files.await;
 
-        // Once we're done downloading, we need to ensure the progress reporter also finishes.
-        let _ = progress_handle.await;
-
         info!("downloaded all parts of the video");
         Ok(files)
     }
@@ -556,8 +553,7 @@ impl<'a> TwitchClient<'a> {
         let progress_handle = {
             let completed = Arc::clone(&completed);
             tokio::spawn(async move {
-                while Arc::strong_count(&completed) > 1 {
-                    // Using strong_count to check the arc's reference count to determine when all tasks are done
+                loop {
                     let current_progress = completed.load(Ordering::Relaxed);
                     info!(
                         "{}: {:>6.2}% ({}/{})",
@@ -569,11 +565,6 @@ impl<'a> TwitchClient<'a> {
                     tokio::time::sleep(report_frequency).await;
                     // sleep for a while
                 }
-                info!(
-                    "Completed: {}/{}",
-                    completed.load(Ordering::Relaxed),
-                    amount_of_parts
-                );
             })
         };
         (completed, progress_handle)
