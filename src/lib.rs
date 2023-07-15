@@ -4,7 +4,7 @@ use std::{
     fmt::Debug,
     path::{Path, PathBuf},
     result::Result as StdResult,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     sync::Arc,
 };
 
@@ -521,7 +521,7 @@ impl<'a> TwitchClient<'a> {
         } else if amount_of_threads > amount_of_parts {
             amount_of_threads = amount_of_parts;
         }
-        let (completed, _) = Self::create_progress_indicator(
+        let (completed, progress_done, progress_handle) = Self::create_progress_indicator(
             amount_of_parts,
             Duration::from_secs(5),
             "Downloading Parts",
@@ -538,6 +538,10 @@ impl<'a> TwitchClient<'a> {
         .buffer_unordered(amount_of_threads)
         .collect::<Vec<Option<PathBuf>>>();
         let files = files.await;
+        info!("downloaded parts");
+        //tell the progress indicator to stop and wait for it to exit
+        progress_done.fetch_or(true, Ordering::Relaxed);
+        let _ = progress_handle.await;
 
         info!("downloaded all parts of the video");
         Ok(files)
@@ -547,27 +551,35 @@ impl<'a> TwitchClient<'a> {
         amount_of_parts: usize,
         report_frequency: Duration,
         title: impl Into<String>,
-    ) -> (Arc<AtomicUsize>, JoinHandle<()>) {
+    ) -> (Arc<AtomicUsize>, Arc<AtomicBool>, JoinHandle<()>) {
         let completed = Arc::new(AtomicUsize::new(0));
+        let canceled = Arc::new(AtomicBool::new(false));
         let title = title.into();
         let progress_handle = {
             let completed = Arc::clone(&completed);
+            let canceled = Arc::clone(&canceled);
             tokio::spawn(async move {
-                loop {
+                while canceled.load(Ordering::Relaxed) {
                     let current_progress = completed.load(Ordering::Relaxed);
                     info!(
-                        "{}: {:>6.2}% ({}/{})",
+                        "{}: {:>6.2}% ({}/{}) [{}]",
                         title,
                         (current_progress as f64 / amount_of_parts as f64) * 100.0,
                         current_progress,
-                        amount_of_parts
+                        amount_of_parts,
+                        Arc::strong_count(&completed)
                     );
                     tokio::time::sleep(report_frequency).await;
                     // sleep for a while
                 }
+                let current_progress = completed.load(Ordering::Relaxed);
+                info!(
+                    "{} Completed! ({}/{})",
+                    title, current_progress, amount_of_parts
+                );
             })
         };
-        (completed, progress_handle)
+        (completed, canceled, progress_handle)
     }
 
     async fn get_parts(&self, url: &String) -> Result<(u64, HashMap<String, f32>)> {
