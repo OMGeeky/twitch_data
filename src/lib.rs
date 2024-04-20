@@ -9,7 +9,6 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use twba_downloader_config::load_config;
 use exponential_backoff::twitch::{
     check_backoff_twitch_get, check_backoff_twitch_get_with_client,
     check_backoff_twitch_with_client,
@@ -23,6 +22,8 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use twba_backup_config::prelude::Config;
+use twba_backup_config::Conf;
 use twitch_api::helix::channels::ChannelInformation;
 use twitch_api::helix::videos::Video as TwitchVideo;
 use twitch_api::types::{Timestamp, VideoPrivacy};
@@ -127,11 +128,16 @@ pub struct TwitchClient<'a> {
     reqwest_client: reqwest::Client,
     client: twitch_api::TwitchClient<'a, reqwest::Client>,
     token: twitch_oauth2::AppAccessToken,
+    conf: Conf,
 }
 
 //region getting general infos
 impl<'a> TwitchClient<'a> {
-    pub async fn new(client_id: ClientId, client_secret: ClientSecret) -> Result<TwitchClient<'a>> {
+    pub async fn new(
+        client_id: ClientId,
+        client_secret: ClientSecret,
+        conf: Conf,
+    ) -> Result<TwitchClient<'a>> {
         trace!("Creating new TwitchClient");
         let reqwest_client = reqwest::Client::new();
         debug!("Created new reqwest client");
@@ -149,6 +155,7 @@ impl<'a> TwitchClient<'a> {
             client,
             token,
             reqwest_client,
+            conf,
         };
         trace!("Created new TwitchClient");
         Ok(res)
@@ -297,15 +304,15 @@ impl<'a> TwitchClient<'a> {
 }"#;
 
         let url = "https://gql.twitch.tv/gql";
-        let config = load_config();
+        let config = &self.conf;
 
         trace!("Sending request to: {}", url);
         debug!("Request body: {}", json);
-        debug!("Client-ID: {}", config.twitch_downloader_id);
+        debug!("Client-ID: {}", &config.twitch.client_id);
         let request = self
             .reqwest_client
             .post(url)
-            .header("Client-ID", config.twitch_downloader_id)
+            .header("Client-ID", &config.twitch.client_id)
             .body(json)
             .build()?;
         let res = check_backoff_twitch_with_client(request, &self.reqwest_client).await?;
@@ -496,16 +503,15 @@ impl<'a> TwitchClient<'a> {
         folder_path: &PathBuf,
     ) -> Result<Vec<Option<PathBuf>>> {
         trace!("downloading all parts of video: {}", url);
-        let config = load_config();
-        let mut amount_of_threads = config.twitch_downloader_thread_count as usize;
-        let base_url = get_base_url(&url);
+        let config = &self.conf;
+        let mut amount_of_threads = config.twitch.downloader_thread_count as usize;
+        let base_url = get_base_url(url);
         info!("getting parts");
-        let (age, parts) = self.get_parts(&url).await?;
+        let (age, parts) = self.get_parts(url).await?;
         let try_unmute = age < 24;
         info!("getting parts ...Done");
 
         let amount_of_parts = parts.len();
-        let amount_of_parts = amount_of_parts;
         info!("part count: {}", amount_of_parts);
         if amount_of_parts < 1 {
             return Err(Box::new(DownloadError::NoParts));
@@ -694,12 +700,18 @@ async fn try_download(main_path: &PathBuf, part: &String, part_url: &String) -> 
 
 pub async fn get_client<'a>() -> Result<TwitchClient<'a>> {
     trace!("get_client");
-    let config = load_config();
-    info!("get_client: config: {:?}", config);
-    let client_id = ClientId::new(config.twitch_client_id);
-    let client_secret = ClientSecret::new(config.twitch_client_secret);
+    let conf: Conf = Config::builder()
+        .env()
+        .file("./settings.toml")
+        .file(shellexpand::tilde("~/twba/config.toml").into_owned())
+        .load()
+        .expect("Failed to load config");
+    info!("get_client: config: {:?}", conf);
+    let client_id = ClientId::new(conf.twitch.client_id.clone());
+    let client_secret = ClientSecret::new(conf.twitch.client_secret.clone());
     info!("creating TwitchClient");
-    let client = TwitchClient::new(client_id, client_secret).await?;
+
+    let client = TwitchClient::new(client_id, client_secret, conf).await?;
     Ok(client)
 }
 

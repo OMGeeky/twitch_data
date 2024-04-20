@@ -1,14 +1,13 @@
 [package]
 name = "twba-twitch-data"
-version = "0.2.10"
+version = "0.3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-twba-downloader-config = { git = "https://github.com/OMGeeky/downloader_config" }
+twba-backup-config = { version = "0.1", git = "https://github.com/OMGeeky/backup_config.git" }
 exponential_backoff = { git = "https://github.com/OMGeeky/exponential_backoff" }
-
 
 reqwest = { version = "0.11", features = ["default", "stream"] }
 #twitch_api = { version = "0.7.0-rc.3", features = ["helix", "client", "twitch_oauth2", "reqwest"] }
@@ -30,3 +29,4 @@ async-recursion = "1.0.0"
 log = "0.4"
 simplelog = "0.12.1"
 tracing = "0.1"
+shellexpand = "3.1"
