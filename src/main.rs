@@ -3,10 +3,10 @@ use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 use tracing::info;
-use twitch_data::combine_parts_into_single_ts;
-use twitch_data::convert_ts_to_mp4;
-use twitch_data::get_client;
-use twitch_data::sort_video_part_filenames;
+use twba_twitch_data::combine_parts_into_single_ts;
+use twba_twitch_data::convert_ts_to_mp4;
+use twba_twitch_data::get_client;
+use twba_twitch_data::sort_video_part_filenames;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

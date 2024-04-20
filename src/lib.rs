@@ -9,7 +9,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use downloader_config::load_config;
+use twba_downloader_config::load_config;
 use exponential_backoff::twitch::{
     check_backoff_twitch_get, check_backoff_twitch_get_with_client,
     check_backoff_twitch_with_client,
