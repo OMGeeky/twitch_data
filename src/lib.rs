@@ -704,6 +704,7 @@ pub async fn get_client<'a>() -> Result<TwitchClient<'a>> {
         .env()
         .file("./settings.toml")
         .file(shellexpand::tilde("~/twba/config.toml").into_owned())
+        .file(std::env::var("TWBA_CONFIG").unwrap_or_else(|_| "~/twba/config.toml".to_string()))
         .load()
         .expect("Failed to load config");
     info!("get_client: config: {:?}", conf);
