@@ -9,7 +9,7 @@ edition = "2021"
 twba-backup-config = { version = "0.1", git = "https://github.com/OMGeeky/backup_config.git" }
 exponential_backoff = { git = "https://github.com/OMGeeky/exponential_backoff" }
 
-reqwest = { version = "0.11", features = ["default", "stream", "rustls-tls"] }
+reqwest = { version = "0.11", features = ["default", "stream"] }
 #twitch_api = { version = "0.7.0-rc.3", features = ["helix", "client", "twitch_oauth2", "reqwest"] }
 tokio = { version = "1.23", features = ["full", "macros"] }
 twitch_api = { version = "0.7.0-rc.6", features = ["all", "reqwest"] }
