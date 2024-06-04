@@ -928,6 +928,14 @@ mod tests {
         println!("duration: {:?}", duration);
         assert_eq!(duration.num_seconds(), 10187);
     }
+    #[test]
+    fn test_convert_twitch_duration2() {
+        let duration = "3h56m57s";
+        println!("duration: {:?}", duration);
+        let duration = convert_twitch_duration(duration);
+        println!("duration: {:?}", duration);
+        assert_eq!(duration.num_seconds() as i32, 3 * 3600 + 56 * 60 + 57);
+    }
 
     #[test]
     fn test_get_base_url() {
