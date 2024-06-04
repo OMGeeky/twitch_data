@@ -97,6 +97,22 @@ pub fn convert_twitch_video_to_twitch_data_video(twitch_video: TwitchVideo) -> V
 }
 
 impl<'a> TwitchClient<'a> {
+    pub async fn is_live(&self, login: &str) -> Result<bool> {
+        use twitch_api::helix::streams::get_streams;
+        let login = login.into();
+        let logins = &[login];
+        let mut req = get_streams::GetStreamsRequest::user_logins(logins);
+        req.first = Some(1);
+        let no_stream_found = self
+            .client
+            .helix
+            .req_get(req, &self.token)
+            .await?
+            .data
+            .is_empty();
+        Ok(!no_stream_found)
+    }
+
     pub async fn get_videos_from_login(
         &self,
         login: &str,

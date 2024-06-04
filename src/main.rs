@@ -19,24 +19,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .expect("Failed to initialize logger");
     // async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting!");
+    info!("Starting!");
     sample().await?;
-    println!("Done! 1");
+    info!("Done! 1");
     // get_channel_title_from_login("bananabrea").await?;
-    println!("Done! 2");
+    info!("Done! 2");
     // get_video_ids_from_channel("bananabrea").await?;
-    println!("Done! 3");
+    info!("Done! 3");
     // get_video_info_from_id("1674543458").await?;
     // get_video_info_from_id("1677206253").await?;
-    println!("Done! 4");
+    info!("Done! 4");
     // get_video_playlist("1677206253").await?;
-    println!("Done! 5");
+    info!("Done! 5");
     // download_video("1768835851").await?;
     // download_video("1835211564").await?;
     // download_video("1792000647").await?;
     // combine_parts_test("1792000647").await?;
-    println!("Done! 6");
-    println!("Done! 7");
-    println!("\n\nDone!");
+    info!("Done! 6");
+    is_channel_live().await?;
+    info!("Done! 7");
+    info!("\n\nDone!");
+    println!("DONE!");
+    Ok(())
+}
+
+async fn is_channel_live() -> Result<(), Box<dyn Error>> {
+    let client = get_client().await?;
+    let is_live = client.is_live("spaceboy").await?;
+    info!("Is live: {}", is_live);
     Ok(())
 }
 
